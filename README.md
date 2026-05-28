@@ -76,7 +76,3 @@ while (i < 3) {
 - `pymini.py`: The core interpreter containing the lexer, parser, and tree-walk evaluator.
 - `examples/`: A directory containing sample PyMini programs.
 - `docs/`: Detailed documentation on language design and usage.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
