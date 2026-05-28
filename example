@@ -1,0 +1,42 @@
+// Example PyMini Program
+
+// Variable declaration and assignment
+let x = 10;
+let y = 5;
+let message = "Hello, PyMini!";
+
+print(message);
+print(x + y);
+
+// Function definition and call
+func add(a, b) {
+    return a + b;
+}
+
+let sum = add(x, y);
+print(sum);
+
+// Conditional statement
+if (x > y) {
+    print("x is greater than y");
+} else {
+    print("y is greater than or equal to x");
+}
+
+// While loop
+let counter = 0;
+while (counter < 3) {
+    print("Loop iteration: ");
+    print(counter);
+    counter = counter + 1;
+}
+
+// Boolean and nil literals
+let is_active = true;
+let nothing = nil;
+print(is_active);
+print(nothing);
+
+// More complex expression
+let result = (x + y) * 2 - add(1, 2);
+print(result);
