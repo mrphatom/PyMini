@@ -6,7 +6,9 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 
 - **Dynamic Typing:** No need to declare variable types.
 - **First-Class Functions:** Define and pass functions with ease.
-- **Control Flow:** Supports `if-else` conditionals and `while` loops.
+- **Control Flow:** Supports `if-else` conditionals, `while` loops, and logical operators (`and`, `or`).
+- **Arithmetic:** Full support for `+`, `-`, `*`, `/`, and `%` (modulo).
+- **Built-in Functions:** Native functions like `clock()` and `len()`.
 - **Lexical Scoping:** Proper variable management within blocks and functions.
 - **Clean Syntax:** Minimalist design with a focus on clarity.
 
@@ -15,7 +17,7 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 Ensure you have Python 3.x installed on your system. Clone this repository and you're ready to go.
 
 ```bash
-git clone https://github.com/yourusername/pymini.git
+git clone https://github.com/mrphatom/PyMini.git
 cd pymini
 ```
 

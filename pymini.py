@@ -1,4 +1,3 @@
-import re
 import sys
 
 # --- Token Types ---
@@ -22,6 +21,9 @@ class TokenType:
     SLASH = 'SLASH'
     EQ = 'EQ'
     EQ_EQ = 'EQ_EQ'
+    AND = 'AND'
+    OR = 'OR'
+    MODULO = 'MODULO'
     BANG = 'BANG'
     BANG_EQ = 'BANG_EQ'
     GT = 'GT'
@@ -140,6 +142,8 @@ class Lexer:
         'true': TokenType.TRUE,
         'false': TokenType.FALSE,
         'nil': TokenType.NIL,
+        'and': TokenType.AND,
+        'or': TokenType.OR,
     }
 
     def scan_token(self):
@@ -152,10 +156,14 @@ class Lexer:
             self.add_token(TokenType.LBRACE)
         elif char == '}':
             self.add_token(TokenType.RBRACE)
-        elif char == ';':
+        elif char == ";":
             self.add_token(TokenType.SEMICOLON)
-        elif char == ',':
+        elif char == ",":
             self.add_token(TokenType.COMMA)
+        elif char == ":":
+            self.add_token(TokenType.COLON)
+        elif char == "%":
+            self.add_token(TokenType.MODULO)
         elif char == '+':
             self.add_token(TokenType.PLUS)
         elif char == '-':
@@ -363,11 +371,13 @@ class Parser:
         self.consume(TokenType.SEMICOLON, "Expect ';' after expression.")
         return Expression(expr)
 
+
+
     def expression(self):
-        return self.assignment()
+        return self.logic_or()
 
     def assignment(self):
-        expr = self.equality()
+        expr = self.logic_or()
         if self.match(TokenType.EQ):
             equals = self.previous()
             value = self.assignment()
@@ -375,6 +385,22 @@ class Parser:
                 name = expr.name
                 return Assign(name, value)
             raise Exception(f"Invalid assignment target at line {equals.line}")
+        return expr
+
+    def logic_or(self):
+        expr = self.logic_and()
+        while self.match(TokenType.OR):
+            operator = self.previous()
+            right = self.logic_and()
+            expr = Binary(expr, operator, right)
+        return expr
+
+    def logic_and(self):
+        expr = self.equality()
+        while self.match(TokenType.AND):
+            operator = self.previous()
+            right = self.equality()
+            expr = Binary(expr, operator, right)
         return expr
 
     def equality(self):
@@ -403,7 +429,7 @@ class Parser:
 
     def factor(self):
         expr = self.unary()
-        while self.match(TokenType.SLASH, TokenType.STAR):
+        while self.match(TokenType.SLASH, TokenType.STAR, TokenType.MODULO):
             operator = self.previous()
             right = self.unary()
             expr = Binary(expr, operator, right)
@@ -519,6 +545,24 @@ class PyMiniCallable:
     def arity(self):
         return 0
 
+import time
+
+class ClockFunction(PyMiniCallable):
+    def arity(self):
+        return 0
+
+    def call(self, interpreter, arguments):
+        return time.time()
+
+class LenFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        if not isinstance(arguments[0], str):
+            raise Exception("len() expects a string argument.")
+        return len(arguments[0])
+
 class PyMiniFunction(PyMiniCallable):
     def __init__(self, declaration, closure):
         self.declaration = declaration
@@ -540,6 +584,8 @@ class PyMiniFunction(PyMiniCallable):
 class Interpreter:
     def __init__(self):
         self.globals = Environment()
+        self.globals.define("clock", ClockFunction())
+        self.globals.define("len", LenFunction())
         self.environment = self.globals
 
     def interpret(self, statements):
@@ -601,6 +647,7 @@ class Interpreter:
                 return -float(right)
             if expr.operator.type == TokenType.BANG:
                 return not self.is_truthy(right)
+            self.check_number_operand(expr.operator, right)
         elif isinstance(expr, Binary):
             left = self.evaluate(expr.left)
             right = self.evaluate(expr.right)
@@ -611,9 +658,22 @@ class Interpreter:
                 if isinstance(left, str) and isinstance(right, str):
                     return left + right
                 raise Exception(f"Operands must be two numbers or two strings at line {expr.operator.line}")
-            if op_type == TokenType.MINUS: return left - right
-            if op_type == TokenType.SLASH: return left / right
-            if op_type == TokenType.STAR: return left * right
+            if op_type == TokenType.AND:
+                return self.is_truthy(left) and self.is_truthy(right)
+            if op_type == TokenType.OR:
+                return self.is_truthy(left) or self.is_truthy(right)
+            if op_type == TokenType.MINUS:
+                self.check_number_operands(expr.operator, left, right)
+                return left - right
+            if op_type == TokenType.SLASH:
+                self.check_number_operands(expr.operator, left, right)
+                return left / right
+            if op_type == TokenType.STAR:
+                self.check_number_operands(expr.operator, left, right)
+                return left * right
+            if op_type == TokenType.MODULO:
+                self.check_number_operands(expr.operator, left, right)
+                return left % right
             if op_type == TokenType.GT: return left > right
             if op_type == TokenType.GE: return left >= right
             if op_type == TokenType.LT: return left < right
@@ -648,6 +708,14 @@ class Interpreter:
         if isinstance(obj, bool):
             return "true" if obj else "false"
         return str(obj)
+
+    def check_number_operand(self, operator, operand):
+        if isinstance(operand, (int, float)): return
+        raise Exception(f"Operand must be a number at line {operator.line}")
+
+    def check_number_operands(self, operator, left, right):
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)): return
+        raise Exception(f"Operands must be numbers at line {operator.line}")
 
 # --- Main Entry Point ---
 class PyMini:

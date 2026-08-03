@@ -19,7 +19,7 @@ PyMini is primarily an educational tool, but its feature set allows you to build
 To create a program, follow these three simple steps:
 
 1.  **Open a Text Editor:** Use any standard text editor (like VS Code, Notepad, or even the terminal).
-2.  **Write the Code:** Use the PyMini syntax (detailed in `language_design.md`).
+2.  **Write the Code:** Use the PyMini syntax (detailed in `PyMini_Language_Design.md`).
 3.  **Save the File:** Save your file with the `.pymin` extension (e.g., `my_app.pymin`).
 
 ### Example: A Simple Multiplier
@@ -77,5 +77,5 @@ PyMini REPL (type 'exit' to quit)
 *   **Python Not Found:** Ensure Python 3 is installed and added to your system path.
 
 ---
-**Author:** [Your Name]
-**Date:** May 25, 2026
+**Author:** mrphatom
+**Date:** August 3, 2026

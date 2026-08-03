@@ -9,11 +9,11 @@ PyMini is a lightweight, interpreted programming language designed for simplicit
 PyMini supports the following fundamental programming features:
 
 *   **Variable Assignment:** Declare and assign values to variables.
-*   **Basic Arithmetic Operations:** Perform addition, subtraction, multiplication, and division.
+*   **Basic Arithmetic Operations:** Perform addition, subtraction, multiplication, division, and modulo (`%`).
 *   **Print Statement:** Output values to the console.
 *   **Function Definitions:** Define reusable blocks of code with parameters and return values.
 *   **Function Calls:** Execute defined functions.
-*   **Conditional Statements:** Control program flow based on conditions (`if-else`).
+*   **Conditional Statements:** Control program flow based on conditions (`if-else`) with support for logical operators (`and`, `or`, `!`).
 *   **Looping Constructs:** Repeat blocks of code (`while` loops).
 *   **Data Types:** Support for Integers, Strings, and Booleans.
 
@@ -56,7 +56,7 @@ function_call       ::= IDENTIFIER "(" (expression ("," expression)*)? ")"
 
 ## 4. Semantics
 
-*   **Variable Scope:** For simplicity, PyMini will initially support global scope for all variables. Future enhancements may include local and function-level scoping.
+*   **Variable Scope:** PyMini supports **lexical scoping**, meaning variables are resolved based on where they are defined, allowing for proper function-level and block-level variable management, including closures.
 *   **Type System:** PyMini will be dynamically typed. Type checking will occur at runtime.
 *   **Error Handling:** Runtime errors (e.g., type mismatches, undefined variables) will result in clear error messages.
 
@@ -82,4 +82,6 @@ PyMini will recognize the following token types:
 *   More complex data structures (lists, dictionaries)
 *   Standard library functions
 *   Error recovery during parsing
-*   Optimizations
+*   **Optimizations**
+*   **Lists and Dictionaries**
+*   **Standard Library Expansion**
