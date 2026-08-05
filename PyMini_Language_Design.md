@@ -15,7 +15,8 @@ PyMini supports the following fundamental programming features:
 *   **Function Calls:** Execute defined functions.
 *   **Conditional Statements:** Control program flow based on conditions (`if-else`) with support for logical operators (`and`, `or`, `!`).
 *   **Looping Constructs:** Repeat blocks of code (`while` loops).
-*   **Data Types:** Support for Integers, Strings, and Booleans.
+*   **Data Types:** Support for Integers, Strings, Booleans, Lists, and Bytes.
+*   **Web3 Integration:** Native Solana support via Rust-based evaluator core.
 
 ## 3. Syntax Specification (BNF-like)
 
@@ -49,12 +50,21 @@ comparison          ::= term ((">" | ">=" | "<" | "<=") term)*
 term                ::= factor (("+" | "-") factor)*
 factor              ::= unary (("*" | "/") unary)*
 unary               ::= ("!" | "-") unary | primary
-primary             ::= NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | function_call
+primary             ::= NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | function_call | list
+list                ::= "[" (expression ("," expression)*)? "]"
 
 function_call       ::= IDENTIFIER "(" (expression ("," expression)*)? ")"
 ```
 
-## 4. Semantics
+## 4. Web3 & Rust Core Integration
+
+PyMini leverages a Rust-based core (`pymini_core`) via PyO3 to handle performance-critical and Web3-specific tasks:
+
+*   **Solana RPC:** Direct interaction with the Solana blockchain for balance and account data.
+*   **Borsh Deserialization:** Efficient binary data handling for Solana accounts.
+*   **Performance:** Evaluator offloads heavy computations to native Rust code.
+
+## 5. Semantics
 
 *   **Variable Scope:** PyMini supports **lexical scoping**, meaning variables are resolved based on where they are defined, allowing for proper function-level and block-level variable management, including closures.
 *   **Type System:** PyMini will be dynamically typed. Type checking will occur at runtime.

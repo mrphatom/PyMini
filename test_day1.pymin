@@ -20,7 +20,7 @@ let text = "Hello PyMini";
 print("Length of 'Hello PyMini':");
 print(len(text));
 
-// Test Lexical Scoping (already existed but verified)
+// Test Lexical Scoping
 print("--- Lexical Scoping ---");
 let a = "global";
 {

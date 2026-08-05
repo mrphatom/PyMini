@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+pymini_core/target/
+*.whl
+.rustup/
+.cargo/

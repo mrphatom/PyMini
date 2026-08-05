@@ -1,0 +1,29 @@
+// PyMini Solana Web3 Example
+print("--- Solana Web3 Example ---");
+
+let rpc = "https://api.mainnet-beta.solana.com";
+let system_program = "11111111111111111111111111111111";
+
+print("Fetching data for System Program:");
+print(system_program);
+
+// Fetch balance using Rust core
+let balance = solana_get_balance(rpc, system_program);
+print("Balance (Lamports):");
+print(balance);
+
+// Fetch account data using Rust core
+let data = solana_get_account_data(rpc, system_program);
+print("Account Data Length:");
+print(len(data));
+
+// Example of list and bytes handling
+let raw_account = [1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0];
+let account_bytes = bytes_from_list(raw_account);
+let decoded = solana_deserialize_simple_account(account_bytes);
+
+print("Decoded Mock Account:");
+print("Key:");
+print(get_dict_value(decoded, "key"));
+print("Value:");
+print(get_dict_value(decoded, "value"));

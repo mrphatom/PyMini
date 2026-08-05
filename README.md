@@ -8,17 +8,28 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 - **First-Class Functions:** Define and pass functions with ease.
 - **Control Flow:** Supports `if-else` conditionals, `while` loops, and logical operators (`and`, `or`).
 - **Arithmetic:** Full support for `+`, `-`, `*`, `/`, and `%` (modulo).
-- **Built-in Functions:** Native functions like `clock()` and `len()`.
+- **Built-in Functions:** Native functions like `clock()`, `len()`, and Web3 helpers.
+- **Rust Core (PyO3):** High-performance Solana-facing logic implemented in Rust.
+- **Web3 Features:** Direct Solana RPC integration and Borsh deserialization.
 - **Lexical Scoping:** Proper variable management within blocks and functions.
 - **Clean Syntax:** Minimalist design with a focus on clarity.
 
 ## Installation
 
-Ensure you have Python 3.x installed on your system. Clone this repository and you're ready to go.
+Ensure you have Python 3.x and Rust installed on your system. 
 
+1. Clone the repository:
 ```bash
 git clone https://github.com/mrphatom/PyMini.git
-cd pymini
+cd PyMini
+```
+
+2. Build and install the Rust core:
+```bash
+cd pymini_core
+maturin build --release
+pip install target/wheels/*.whl
+cd ..
 ```
 
 ## Usage
@@ -56,6 +67,15 @@ func add(a, b) {
 }
 
 print(add(5, 7)); // Outputs: 12
+```
+
+### Web3 (Solana)
+PyMini now supports Solana operations via its Rust core:
+```pymin
+let rpc = "https://api.mainnet-beta.solana.com";
+let addr = "11111111111111111111111111111111";
+let balance = solana_get_balance(rpc, addr);
+print(balance);
 ```
 
 ### Control Flow

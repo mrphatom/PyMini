@@ -36,6 +36,8 @@ class TokenType:
     RPAREN = 'RPAREN'
     LBRACE = 'LBRACE'
     RBRACE = 'RBRACE'
+    LBRACKET = 'LBRACKET'
+    RBRACKET = 'RBRACKET'
     SEMICOLON = 'SEMICOLON'
     COMMA = 'COMMA'
 
@@ -156,6 +158,10 @@ class Lexer:
             self.add_token(TokenType.LBRACE)
         elif char == '}':
             self.add_token(TokenType.RBRACE)
+        elif char == '[':
+            self.add_token(TokenType.LBRACKET)
+        elif char == ']':
+            self.add_token(TokenType.RBRACKET)
         elif char == ";":
             self.add_token(TokenType.SEMICOLON)
         elif char == ",":
@@ -215,6 +221,10 @@ class Unary(Expr):
 class Literal(Expr):
     def __init__(self, value):
         self.value = value
+
+class List(Expr):
+    def __init__(self, elements):
+        self.elements = elements
 
 class Grouping(Expr):
     def __init__(self, expression):
@@ -472,6 +482,14 @@ class Parser:
             expr = self.expression()
             self.consume(TokenType.RPAREN, "Expect ')' after expression.")
             return Grouping(expr)
+        if self.match(TokenType.LBRACKET):
+            elements = []
+            if not self.check(TokenType.RBRACKET):
+                while True:
+                    elements.append(self.expression())
+                    if not self.match(TokenType.COMMA): break
+            self.consume(TokenType.RBRACKET, "Expect ']' after list elements.")
+            return List(elements)
         raise Exception(f"Expect expression at line {self.peek().line}")
 
     def match(self, *types):
@@ -559,9 +577,27 @@ class LenFunction(PyMiniCallable):
         return 1
 
     def call(self, interpreter, arguments):
-        if not isinstance(arguments[0], str):
-            raise Exception("len() expects a string argument.")
+        if not isinstance(arguments[0], (str, bytes, list)):
+            raise Exception("len() expects a string, bytes, or list argument.")
         return len(arguments[0])
+
+class BytesFromListFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        if not isinstance(arguments[0], list):
+            raise Exception("bytes_from_list() expects a list of integers.")
+        return bytes(arguments[0])
+
+class GetDictValueFunction(PyMiniCallable):
+    def arity(self):
+        return 2
+
+    def call(self, interpreter, arguments):
+        if not isinstance(arguments[0], dict):
+            raise Exception("get_dict_value() expects a dictionary as the first argument.")
+        return arguments[0].get(arguments[1])
 
 class PyMiniFunction(PyMiniCallable):
     def __init__(self, declaration, closure):
@@ -581,11 +617,40 @@ class PyMiniFunction(PyMiniCallable):
             return e.value
         return None
 
+# --- Rust Core Integration ---
+try:
+    import pymini_core
+    RUST_CORE_AVAILABLE = True
+except ImportError:
+    RUST_CORE_AVAILABLE = False
+
+class RustFunction(PyMiniCallable):
+    def __init__(self, func, arity_count):
+        self.func = func
+        self.arity_count = arity_count
+
+    def arity(self):
+        return self.arity_count
+
+    def call(self, interpreter, arguments):
+        try:
+            return self.func(*arguments)
+        except Exception as e:
+            raise Exception(f"Rust Core Error: {e}")
+
 class Interpreter:
     def __init__(self):
         self.globals = Environment()
         self.globals.define("clock", ClockFunction())
         self.globals.define("len", LenFunction())
+        self.globals.define("bytes_from_list", BytesFromListFunction())
+        self.globals.define("get_dict_value", GetDictValueFunction())
+        
+        if RUST_CORE_AVAILABLE:
+            self.globals.define("solana_get_balance", RustFunction(pymini_core.get_balance, 2))
+            self.globals.define("solana_get_account_data", RustFunction(pymini_core.get_account_data, 2))
+            self.globals.define("solana_deserialize_simple_account", RustFunction(pymini_core.deserialize_simple_account, 1))
+            
         self.environment = self.globals
 
     def interpret(self, statements):
@@ -639,6 +704,8 @@ class Interpreter:
     def evaluate(self, expr):
         if isinstance(expr, Literal):
             return expr.value
+        elif isinstance(expr, List):
+            return [self.evaluate(element) for element in expr.elements]
         elif isinstance(expr, Grouping):
             return self.evaluate(expr.expression)
         elif isinstance(expr, Unary):
