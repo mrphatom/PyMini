@@ -13,6 +13,10 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 - **Web3 Features:** Direct Solana RPC integration and Borsh deserialization.
 - **Lexical Scoping:** Proper variable management within blocks and functions.
 - **Clean Syntax:** Minimalist design with a focus on clarity.
+- **Comments:** Support for `#` line comments.
+- **Null Safety:** Explicit `null` literal and `is_null()` check.
+- **Error Handling:** Robust `try-catch` blocks for runtime safety.
+- **Looping:** C-style `for` loops in addition to `while` loops.
 
 ## Installation
 
@@ -76,6 +80,39 @@ let rpc = "https://api.mainnet-beta.solana.com";
 let addr = "11111111111111111111111111111111";
 let balance = solana_get_balance(rpc, addr);
 print(balance);
+```
+
+### Batch 1 Extensions
+
+#### Comments
+```pymin
+# This is a comment
+let x = 10; # Trailing comment
+```
+
+#### Null
+```pymin
+let x = null;
+if (is_null(x)) {
+    print("x is null");
+}
+```
+
+#### Try/Catch
+```pymin
+try {
+    let result = 10 / 0;
+} catch (err) {
+    print("Caught error: ");
+    print(err);
+}
+```
+
+#### For-loop
+```pymin
+for (let i = 0; i < 5; i = i + 1) {
+    print(i);
+}
 ```
 
 ### Control Flow

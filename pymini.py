@@ -8,11 +8,15 @@ class TokenType:
     IF = 'IF'
     ELSE = 'ELSE'
     WHILE = 'WHILE'
+    FOR = 'FOR'
+    TRY = 'TRY'
+    CATCH = 'CATCH'
     RETURN = 'RETURN'
     PRINT = 'PRINT'
     TRUE = 'TRUE'
     FALSE = 'FALSE'
     NIL = 'NIL'
+    NULL = 'NULL'
 
     # Operators
     PLUS = 'PLUS'
@@ -139,11 +143,15 @@ class Lexer:
         'if': TokenType.IF,
         'else': TokenType.ELSE,
         'while': TokenType.WHILE,
+        'for': TokenType.FOR,
+        'try': TokenType.TRY,
+        'catch': TokenType.CATCH,
         'return': TokenType.RETURN,
         'print': TokenType.PRINT,
         'true': TokenType.TRUE,
         'false': TokenType.FALSE,
         'nil': TokenType.NIL,
+        'null': TokenType.NULL,
         'and': TokenType.AND,
         'or': TokenType.OR,
     }
@@ -170,6 +178,9 @@ class Lexer:
             self.add_token(TokenType.COLON)
         elif char == "%":
             self.add_token(TokenType.MODULO)
+        elif char == '#':
+            while self.peek() != '\n' and not self.is_at_end():
+                self.advance()
         elif char == '+':
             self.add_token(TokenType.PLUS)
         elif char == '-':
@@ -286,6 +297,12 @@ class Return(Stmt):
         self.keyword = keyword
         self.value = value
 
+class TryCatch(Stmt):
+    def __init__(self, try_block, catch_var, catch_block):
+        self.try_block = try_block
+        self.catch_var = catch_var
+        self.catch_block = catch_block
+
 # --- Parser Class ---
 class Parser:
     def __init__(self, tokens):
@@ -334,8 +351,56 @@ class Parser:
         if self.match(TokenType.PRINT): return self.print_statement()
         if self.match(TokenType.RETURN): return self.return_statement()
         if self.match(TokenType.WHILE): return self.while_statement()
+        if self.match(TokenType.FOR): return self.for_statement()
+        if self.match(TokenType.TRY): return self.try_statement()
         if self.match(TokenType.LBRACE): return Block(self.block())
         return self.expression_statement()
+
+    def for_statement(self):
+        self.consume(TokenType.LPAREN, "Expect '(' after 'for'.")
+        
+        initializer = None
+        if self.match(TokenType.SEMICOLON):
+            initializer = None
+        elif self.match(TokenType.LET):
+            initializer = self.var_declaration()
+        else:
+            initializer = self.expression_statement()
+            
+        condition = None
+        if not self.check(TokenType.SEMICOLON):
+            condition = self.expression()
+        self.consume(TokenType.SEMICOLON, "Expect ';' after loop condition.")
+        
+        increment = None
+        if not self.check(TokenType.RPAREN):
+            increment = self.expression()
+        self.consume(TokenType.RPAREN, "Expect ')' after for clauses.")
+        
+        body = self.statement()
+        
+        if increment is not None:
+            body = Block([body, Expression(increment)])
+            
+        if condition is None:
+            condition = Literal(True)
+        body = While(condition, body)
+        
+        if initializer is not None:
+            body = Block([initializer, body])
+            
+        return body
+
+    def try_statement(self):
+        self.consume(TokenType.LBRACE, "Expect '{' after 'try'.")
+        try_block = self.block()
+        self.consume(TokenType.CATCH, "Expect 'catch' after try block.")
+        self.consume(TokenType.LPAREN, "Expect '(' after 'catch'.")
+        catch_var = self.consume(TokenType.IDENTIFIER, "Expect error variable name.")
+        self.consume(TokenType.RPAREN, "Expect ')' after error variable.")
+        self.consume(TokenType.LBRACE, "Expect '{' before catch body.")
+        catch_block = self.block()
+        return TryCatch(try_block, catch_var, catch_block)
 
     def if_statement(self):
         self.consume(TokenType.LPAREN, "Expect '(' after 'if'.")
@@ -384,7 +449,7 @@ class Parser:
 
 
     def expression(self):
-        return self.logic_or()
+        return self.assignment()
 
     def assignment(self):
         expr = self.logic_or()
@@ -474,6 +539,7 @@ class Parser:
         if self.match(TokenType.FALSE): return Literal(False)
         if self.match(TokenType.TRUE): return Literal(True)
         if self.match(TokenType.NIL): return Literal(None)
+        if self.match(TokenType.NULL): return Literal(PyMiniNull())
         if self.match(TokenType.NUMBER, TokenType.STRING):
             return Literal(self.previous().literal)
         if self.match(TokenType.IDENTIFIER):
@@ -599,6 +665,23 @@ class GetDictValueFunction(PyMiniCallable):
             raise Exception("get_dict_value() expects a dictionary as the first argument.")
         return arguments[0].get(arguments[1])
 
+class PyMiniNull:
+    _instance = None
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(PyMiniNull, cls).__new__(cls)
+        return cls._instance
+    def __eq__(self, other):
+        return isinstance(other, PyMiniNull)
+    def __str__(self):
+        return "null"
+
+class IsNullFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+    def call(self, interpreter, arguments):
+        return isinstance(arguments[0], PyMiniNull)
+
 class PyMiniFunction(PyMiniCallable):
     def __init__(self, declaration, closure):
         self.declaration = declaration
@@ -645,6 +728,7 @@ class Interpreter:
         self.globals.define("len", LenFunction())
         self.globals.define("bytes_from_list", BytesFromListFunction())
         self.globals.define("get_dict_value", GetDictValueFunction())
+        self.globals.define("is_null", IsNullFunction())
         
         if RUST_CORE_AVAILABLE:
             self.globals.define("solana_get_balance", RustFunction(pymini_core.get_balance, 2))
@@ -690,6 +774,14 @@ class Interpreter:
             if stmt.value:
                 value = self.evaluate(stmt.value)
             raise ReturnException(value)
+        elif isinstance(stmt, TryCatch):
+            try:
+                self.execute_block(stmt.try_block, Environment(self.environment))
+            except Exception as e:
+                # Scoped environment for catch block
+                catch_env = Environment(self.environment)
+                catch_env.define(stmt.catch_var.lexeme, str(e))
+                self.execute_block(stmt.catch_block, catch_env)
 
     def execute_block(self, statements, environment):
         previous = self.environment
@@ -772,6 +864,7 @@ class Interpreter:
 
     def stringify(self, obj):
         if obj is None: return "nil"
+        if isinstance(obj, PyMiniNull): return "null"
         if isinstance(obj, bool):
             return "true" if obj else "false"
         return str(obj)
