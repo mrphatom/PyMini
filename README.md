@@ -16,7 +16,9 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 - **Comments:** Support for `#` line comments.
 - **Null Safety:** Explicit `null` literal and `is_null()` check.
 - **Error Handling:** Robust `try-catch` blocks for runtime safety.
-- **Looping:** C-style `for` loops in addition to `while` loops.
+- **Looping:** C-style `for` loops and `for...in` iterator loops.
+- **Traceability:** `explain()` and `get_explanations()` for rule execution transparency.
+- **Determinism:** Strict-mode guardrails blocking `random()` and `now()`.
 
 ## Installation
 
@@ -110,8 +112,35 @@ try {
 
 #### For-loop
 ```pymin
+# C-style
 for (let i = 0; i < 5; i = i + 1) {
     print(i);
+}
+
+# Iterator-style
+let items = [10, 20, 30];
+for item in items {
+    print(item);
+}
+```
+
+### Batch 2 Extensions
+
+#### explain() & get_explanations()
+```pymin
+explain("starting validation");
+# ... logic ...
+let trace = get_explanations();
+print(trace[0]); # "starting validation"
+```
+
+#### Determinism Guardrails
+PyMini enforces strict determinism. Calling non-deterministic functions will raise a runtime error:
+```pymin
+try {
+    random();
+} catch (err) {
+    print(err); # "random() is blocked in strict mode."
 }
 ```
 

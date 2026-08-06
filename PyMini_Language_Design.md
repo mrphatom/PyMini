@@ -30,6 +30,7 @@ statement           ::= assignment_statement
                     | function_definition
                     | if_statement
                     | while_statement
+                    | for_statement
                     | return_statement
                     | expression_statement
 
@@ -41,6 +42,9 @@ return_statement    ::= "return" expression ";"
 
 if_statement        ::= "if" "(" expression ")" "{" statement* "}" ("else" "{" statement* "}")?
 while_statement     ::= "while" "(" expression ")" "{" statement* "}"
+for_statement       ::= c_for_statement | for_in_statement
+c_for_statement     ::= "for" "(" (assignment_statement | expression_statement | ";") expression? ";" expression? ")" statement
+for_in_statement    ::= "for" IDENTIFIER "in" expression statement
 
 expression_statement ::= expression ";"
 

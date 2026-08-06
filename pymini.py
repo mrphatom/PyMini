@@ -27,6 +27,7 @@ class TokenType:
     EQ_EQ = 'EQ_EQ'
     AND = 'AND'
     OR = 'OR'
+    IN = 'IN'
     MODULO = 'MODULO'
     BANG = 'BANG'
     BANG_EQ = 'BANG_EQ'
@@ -154,6 +155,7 @@ class Lexer:
         'null': TokenType.NULL,
         'and': TokenType.AND,
         'or': TokenType.OR,
+        'in': TokenType.IN,
     }
 
     def scan_token(self):
@@ -237,6 +239,11 @@ class List(Expr):
     def __init__(self, elements):
         self.elements = elements
 
+class GetIndex(Expr):
+    def __init__(self, callee, index):
+        self.callee = callee
+        self.index = index
+
 class Grouping(Expr):
     def __init__(self, expression):
         self.expression = expression
@@ -284,6 +291,12 @@ class If(Stmt):
 class While(Stmt):
     def __init__(self, condition, body):
         self.condition = condition
+        self.body = body
+
+class ForIn(Stmt):
+    def __init__(self, item, iterable, body):
+        self.item = item
+        self.iterable = iterable
         self.body = body
 
 class Function(Stmt):
@@ -357,39 +370,46 @@ class Parser:
         return self.expression_statement()
 
     def for_statement(self):
-        self.consume(TokenType.LPAREN, "Expect '(' after 'for'.")
-        
-        initializer = None
-        if self.match(TokenType.SEMICOLON):
+        if self.match(TokenType.LPAREN):
+            # C-style for loop
             initializer = None
-        elif self.match(TokenType.LET):
-            initializer = self.var_declaration()
+            if self.match(TokenType.SEMICOLON):
+                initializer = None
+            elif self.match(TokenType.LET):
+                initializer = self.var_declaration()
+            else:
+                initializer = self.expression_statement()
+                
+            condition = None
+            if not self.check(TokenType.SEMICOLON):
+                condition = self.expression()
+            self.consume(TokenType.SEMICOLON, "Expect ';' after loop condition.")
+            
+            increment = None
+            if not self.check(TokenType.RPAREN):
+                increment = self.expression()
+            self.consume(TokenType.RPAREN, "Expect ')' after for clauses.")
+            
+            body = self.statement()
+            
+            if increment is not None:
+                body = Block([body, Expression(increment)])
+                
+            if condition is None:
+                condition = Literal(True)
+            body = While(condition, body)
+            
+            if initializer is not None:
+                body = Block([initializer, body])
+                
+            return body
         else:
-            initializer = self.expression_statement()
-            
-        condition = None
-        if not self.check(TokenType.SEMICOLON):
-            condition = self.expression()
-        self.consume(TokenType.SEMICOLON, "Expect ';' after loop condition.")
-        
-        increment = None
-        if not self.check(TokenType.RPAREN):
-            increment = self.expression()
-        self.consume(TokenType.RPAREN, "Expect ')' after for clauses.")
-        
-        body = self.statement()
-        
-        if increment is not None:
-            body = Block([body, Expression(increment)])
-            
-        if condition is None:
-            condition = Literal(True)
-        body = While(condition, body)
-        
-        if initializer is not None:
-            body = Block([initializer, body])
-            
-        return body
+            # for-in iterator loop
+            item = self.consume(TokenType.IDENTIFIER, "Expect variable name after 'for'.")
+            self.consume(TokenType.IN, "Expect 'in' after variable name.")
+            iterable = self.expression()
+            body = self.statement()
+            return ForIn(item, iterable, body)
 
     def try_statement(self):
         self.consume(TokenType.LBRACE, "Expect '{' after 'try'.")
@@ -522,6 +542,10 @@ class Parser:
         while True:
             if self.match(TokenType.LPAREN):
                 expr = self.finish_call(expr)
+            elif self.match(TokenType.LBRACKET):
+                index = self.expression()
+                self.consume(TokenType.RBRACKET, "Expect ']' after index.")
+                expr = GetIndex(expr, index)
             else:
                 break
         return expr
@@ -682,6 +706,33 @@ class IsNullFunction(PyMiniCallable):
     def call(self, interpreter, arguments):
         return isinstance(arguments[0], PyMiniNull)
 
+class ExplainFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+    def call(self, interpreter, arguments):
+        message = interpreter.stringify(arguments[0])
+        print(f"EXPLAIN: {message}")
+        interpreter.trace.append(message)
+        return PyMiniNull()
+
+class GetExplanationsFunction(PyMiniCallable):
+    def arity(self):
+        return 0
+    def call(self, interpreter, arguments):
+        return list(interpreter.trace)
+
+class RandomFunction(PyMiniCallable):
+    def arity(self):
+        return 0
+    def call(self, interpreter, arguments):
+        raise Exception("random() is blocked in strict mode.")
+
+class NowFunction(PyMiniCallable):
+    def arity(self):
+        return 0
+    def call(self, interpreter, arguments):
+        raise Exception("now() is blocked in strict mode.")
+
 class PyMiniFunction(PyMiniCallable):
     def __init__(self, declaration, closure):
         self.declaration = declaration
@@ -723,12 +774,17 @@ class RustFunction(PyMiniCallable):
 
 class Interpreter:
     def __init__(self):
+        self.trace = []
         self.globals = Environment()
         self.globals.define("clock", ClockFunction())
         self.globals.define("len", LenFunction())
         self.globals.define("bytes_from_list", BytesFromListFunction())
         self.globals.define("get_dict_value", GetDictValueFunction())
         self.globals.define("is_null", IsNullFunction())
+        self.globals.define("explain", ExplainFunction())
+        self.globals.define("get_explanations", GetExplanationsFunction())
+        self.globals.define("random", RandomFunction())
+        self.globals.define("now", NowFunction())
         
         if RUST_CORE_AVAILABLE:
             self.globals.define("solana_get_balance", RustFunction(pymini_core.get_balance, 2))
@@ -766,6 +822,15 @@ class Interpreter:
         elif isinstance(stmt, While):
             while self.is_truthy(self.evaluate(stmt.condition)):
                 self.execute(stmt.body)
+        elif isinstance(stmt, ForIn):
+            iterable = self.evaluate(stmt.iterable)
+            if not isinstance(iterable, list):
+                raise Exception(f"Can only iterate over lists at line {stmt.item.line}")
+            
+            for value in iterable:
+                environment = Environment(self.environment)
+                environment.define(stmt.item.lexeme, value)
+                self.execute_block(stmt.body.statements if isinstance(stmt.body, Block) else [stmt.body], environment)
         elif isinstance(stmt, Function):
             function = PyMiniFunction(stmt, self.environment)
             self.environment.define(stmt.name.lexeme, function)
@@ -798,6 +863,14 @@ class Interpreter:
             return expr.value
         elif isinstance(expr, List):
             return [self.evaluate(element) for element in expr.elements]
+        elif isinstance(expr, GetIndex):
+            callee = self.evaluate(expr.callee)
+            index = self.evaluate(expr.index)
+            if not isinstance(callee, (list, str, bytes)):
+                raise Exception("Can only index into lists, strings, or bytes.")
+            if not isinstance(index, int):
+                raise Exception("Index must be an integer.")
+            return callee[index]
         elif isinstance(expr, Grouping):
             return self.evaluate(expr.expression)
         elif isinstance(expr, Unary):
