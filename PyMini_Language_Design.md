@@ -15,7 +15,7 @@ PyMini supports the following fundamental programming features:
 *   **Function Calls:** Execute defined functions.
 *   **Conditional Statements:** Control program flow based on conditions (`if-else`) with support for logical operators (`and`, `or`, `!`).
 *   **Looping Constructs:** Repeat blocks of code (`while` loops).
-*   **Data Types:** Support for Integers, Strings, Booleans, Lists, and Bytes.
+*   **Data Types:** Support for Integers, Strings, Booleans, Lists, Bytes, and Dictionaries.
 *   **Web3 Integration:** Native Solana support via Rust-based evaluator core.
 
 ## 3. Syntax Specification (BNF-like)
@@ -54,8 +54,9 @@ comparison          ::= term ((">" | ">=" | "<" | "<=") term)*
 term                ::= factor (("+" | "-") factor)*
 factor              ::= unary (("*" | "/") unary)*
 unary               ::= ("!" | "-") unary | primary
-primary             ::= NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | function_call | list
+primary             ::= NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" | IDENTIFIER | function_call | list | dict
 list                ::= "[" (expression ("," expression)*)? "]"
+dict                ::= "{" (STRING ":" expression ("," STRING ":" expression)*)? "}"
 
 function_call       ::= IDENTIFIER "(" (expression ("," expression)*)? ")"
 ```

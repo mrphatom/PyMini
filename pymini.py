@@ -45,6 +45,7 @@ class TokenType:
     RBRACKET = 'RBRACKET'
     SEMICOLON = 'SEMICOLON'
     COMMA = 'COMMA'
+    COLON = 'COLON'
 
     # Literals
     IDENTIFIER = 'IDENTIFIER'
@@ -243,6 +244,16 @@ class GetIndex(Expr):
     def __init__(self, callee, index):
         self.callee = callee
         self.index = index
+
+class SetIndex(Expr):
+    def __init__(self, callee, index, value):
+        self.callee = callee
+        self.index = index
+        self.value = value
+
+class Dict(Expr):
+    def __init__(self, entries):
+        self.entries = entries
 
 class Grouping(Expr):
     def __init__(self, expression):
@@ -479,6 +490,8 @@ class Parser:
             if isinstance(expr, Variable):
                 name = expr.name
                 return Assign(name, value)
+            elif isinstance(expr, GetIndex):
+                return SetIndex(expr.callee, expr.index, value)
             raise Exception(f"Invalid assignment target at line {equals.line}")
         return expr
 
@@ -580,6 +593,17 @@ class Parser:
                     if not self.match(TokenType.COMMA): break
             self.consume(TokenType.RBRACKET, "Expect ']' after list elements.")
             return List(elements)
+        if self.match(TokenType.LBRACE):
+            entries = {}
+            if not self.check(TokenType.RBRACE):
+                while True:
+                    key = self.consume(TokenType.STRING, "Expect string key in dict literal.")
+                    self.consume(TokenType.COLON, "Expect ':' after key.")
+                    value = self.expression()
+                    entries[key.literal] = value
+                    if not self.match(TokenType.COMMA): break
+            self.consume(TokenType.RBRACE, "Expect '}' after dict literal.")
+            return Dict(entries)
         raise Exception(f"Expect expression at line {self.peek().line}")
 
     def match(self, *types):
@@ -706,6 +730,14 @@ class IsNullFunction(PyMiniCallable):
     def call(self, interpreter, arguments):
         return isinstance(arguments[0], PyMiniNull)
 
+class DictSizeFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+    def call(self, interpreter, arguments):
+        if not isinstance(arguments[0], dict):
+            raise Exception("dict_size() expects a dictionary argument.")
+        return len(arguments[0])
+
 class ExplainFunction(PyMiniCallable):
     def arity(self):
         return 1
@@ -781,6 +813,7 @@ class Interpreter:
         self.globals.define("bytes_from_list", BytesFromListFunction())
         self.globals.define("get_dict_value", GetDictValueFunction())
         self.globals.define("is_null", IsNullFunction())
+        self.globals.define("dict_size", DictSizeFunction())
         self.globals.define("explain", ExplainFunction())
         self.globals.define("get_explanations", GetExplanationsFunction())
         self.globals.define("random", RandomFunction())
@@ -863,14 +896,22 @@ class Interpreter:
             return expr.value
         elif isinstance(expr, List):
             return [self.evaluate(element) for element in expr.elements]
+        elif isinstance(expr, Dict):
+            return {key: self.evaluate(value) for key, value in expr.entries.items()}
         elif isinstance(expr, GetIndex):
             callee = self.evaluate(expr.callee)
             index = self.evaluate(expr.index)
-            if not isinstance(callee, (list, str, bytes)):
-                raise Exception("Can only index into lists, strings, or bytes.")
-            if not isinstance(index, int):
-                raise Exception("Index must be an integer.")
+            if not isinstance(callee, (list, str, bytes, dict)):
+                raise Exception("Can only index into lists, strings, bytes, or dicts.")
             return callee[index]
+        elif isinstance(expr, SetIndex):
+            callee = self.evaluate(expr.callee)
+            index = self.evaluate(expr.index)
+            value = self.evaluate(expr.value)
+            if not isinstance(callee, (list, dict)):
+                raise Exception("Can only set index on lists or dicts.")
+            callee[index] = value
+            return value
         elif isinstance(expr, Grouping):
             return self.evaluate(expr.expression)
         elif isinstance(expr, Unary):
@@ -940,6 +981,9 @@ class Interpreter:
         if isinstance(obj, PyMiniNull): return "null"
         if isinstance(obj, bool):
             return "true" if obj else "false"
+        if isinstance(obj, dict):
+            items = [f'"{k}": {self.stringify(v)}' for k, v in obj.items()]
+            return "{" + ", ".join(items) + "}"
         return str(obj)
 
     def check_number_operand(self, operator, operand):

@@ -17,6 +17,7 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 - **Null Safety:** Explicit `null` literal and `is_null()` check.
 - **Error Handling:** Robust `try-catch` blocks for runtime safety.
 - **Looping:** C-style `for` loops and `for...in` iterator loops.
+- **Dictionaries:** Native dict literals `{"key": value}` with indexing and assignment.
 - **Traceability:** `explain()` and `get_explanations()` for rule execution transparency.
 - **Determinism:** Strict-mode guardrails blocking `random()` and `now()`.
 
@@ -122,6 +123,14 @@ let items = [10, 20, 30];
 for item in items {
     print(item);
 }
+```
+
+#### Dictionaries
+```pymin
+let d = {"a": 1, "b": 2};
+print(d["a"]);    # Read
+d["c"] = 3;       # Write
+print(dict_size(d)); # 3
 ```
 
 ### Batch 2 Extensions
