@@ -11,6 +11,8 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 - **Built-in Functions:** Native functions like `clock()`, `len()`, and Web3 helpers.
 - **Rust Core (PyO3):** High-performance Solana-facing logic implemented in Rust.
 - **Web3 Features:** Direct Solana RPC integration and Borsh deserialization.
+- **Anchor Integration:** IDL-driven `GigEscrow` fetching, instruction construction, simulation, and gated devnet sending.
+- **Assertions and Audit Logs:** Catchable `assert()` checks and timestamped `log_audit()` persistence.
 - **Lexical Scoping:** Proper variable management within blocks and functions.
 - **Clean Syntax:** Minimalist design with a focus on clarity.
 - **Comments:** Support for `#` line comments.
@@ -77,13 +79,46 @@ print(add(5, 7)); // Outputs: 12
 ```
 
 ### Web3 (Solana)
-PyMini now supports Solana operations via its Rust core:
+PyMini supports Solana operations via its Rust core:
 ```pymin
 let rpc = "https://api.mainnet-beta.solana.com";
 let addr = "11111111111111111111111111111111";
 let balance = solana_get_balance(rpc, addr);
 print(balance);
 ```
+
+### Batch 5 Anchor Integration
+
+The Rust extension bundles the Mappers Anchor IDL and exposes typed `GigEscrow` fetching through `anchor-client` and Borsh-compatible decoding:
+
+```pymin
+let rpc = "https://api.devnet.solana.com";
+let program = "52yt1gCbPeiKP4JYjUVKmMJSgBMMcUx8xRGqozMKX2Mu";
+let escrow = anchor_fetch_account(rpc, program, escrow_address, "GigEscrow");
+print(escrow["status"]);
+print(escrow["amount"]);
+```
+
+Instruction builders return dictionaries and do not send transactions:
+
+```pymin
+let ix = anchor_build_release_ix(program, escrow_address, oracle_pubkey);
+let simulation = anchor_simulate_tx(rpc, ix);
+print(simulation["success"]);
+```
+
+`assert(condition, message)` raises a catchable runtime error when the condition is false. `log_audit(path, message)` appends a timestamped audit entry:
+
+```pymin
+assert(escrow["status"] == "Pending", "cannot release a non-pending job");
+log_audit("audit.log", "escrow checked");
+```
+
+## Safety
+
+`anchor_send_tx(rpc, instruction, keypair_env_var)` is deliberately restricted. The third argument is only the **name** of an environment variable; keypair material must remain outside PyMini source files. The Rust layer requires the RPC URL to contain `devnet`, requires the process-level environment variable `PYMINI_ALLOW_SEND=1`, and reads the keypair path from the named environment variable. Mainnet URLs are rejected even when the enable flag is present. These checks are implemented in Rust and cannot be bypassed by a `.pymin` script.
+
+The repository does not include a private key or a live escrow fixture. The `examples/escrow_status.pymin` example uses a safe placeholder address and reports the fetch error until a real devnet `GigEscrow` PDA is supplied.
 
 ### Batch 1 Extensions
 
@@ -171,5 +206,13 @@ while (i < 3) {
 ## Project Structure
 
 - `pymini.py`: The core interpreter containing the lexer, parser, and tree-walk evaluator.
-- `examples/`: A directory containing sample PyMini programs.
+- `pymini_core/`: The PyO3 Rust extension containing Solana RPC, Anchor-client, Borsh decoding, simulation, and guarded sending.
+- `idl.json`: The bundled Mappers Anchor IDL used by the Rust extension.
+- `examples/`: Sample PyMini programs, including `escrow_status.pymin`, `oracle_decision.pymin`, and `assert_audit.pymin`.
 - `docs/`: Detailed documentation on language design and usage.
+
+## References
+
+- [Anchor Rust client documentation](https://www.anchor-lang.com/docs/clients/rust)
+- [anchor-client 0.29 `Client` API](https://docs.rs/anchor-client/0.29.0/anchor_client/struct.Client.html)
+- [anchor-client 0.29 `Program` API](https://docs.rs/anchor-client/0.29.0/anchor_client/struct.Program.html)

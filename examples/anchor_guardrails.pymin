@@ -1,0 +1,16 @@
+let program = "52yt1gCbPeiKP4JYjUVKmMJSgBMMcUx8xRGqozMKX2Mu";
+let escrow = "11111111111111111111111111111111";
+let oracle = "11111111111111111111111111111111";
+let ix = anchor_build_release_ix(program, escrow, oracle);
+
+try {
+    anchor_send_tx("https://api.devnet.solana.com", ix, "ORACLE_KEYPAIR_PATH");
+} catch (err) {
+    print("blocked-no-flag");
+}
+
+try {
+    anchor_send_tx("https://api.mainnet-beta.solana.com", ix, "ORACLE_KEYPAIR_PATH");
+} catch (err) {
+    print("blocked-mainnet");
+}

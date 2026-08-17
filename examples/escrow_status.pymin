@@ -1,0 +1,26 @@
+// Set address to a real GigEscrow PDA before querying a live devnet escrow.
+let rpc = "https://api.devnet.solana.com";
+let program_id = "52yt1gCbPeiKP4JYjUVKmMJSgBMMcUx8xRGqozMKX2Mu";
+let escrow_address = "11111111111111111111111111111111";
+
+try {
+    let escrow = anchor_fetch_account(rpc, program_id, escrow_address, "GigEscrow");
+    explain("status: " + escrow["status"]);
+    explain("amount: " + escrow["amount"]);
+    explain("jobId: " + escrow["jobId"]);
+    explain("client: " + escrow["client"]);
+    explain("freelancer: " + escrow["freelancer"]);
+    explain("oracle: " + escrow["oracle"]);
+
+    if (escrow["status"] == "Pending") {
+        print("Job is pending oracle resolution.");
+    }
+    if (escrow["status"] == "Completed") {
+        print("Job completed and payment released.");
+    }
+    if (escrow["status"] == "Cancelled") {
+        print("Job cancelled and funds refunded.");
+    }
+} catch (err) {
+    print("Unable to fetch GigEscrow: " + err);
+}

@@ -1,0 +1,40 @@
+func evaluate_consensus(gemini, claude) {
+    // PyMini has integer literals; 80/100 and 75/100 preserve 0.80 and 0.75 exactly.
+    let approval_threshold = 80;
+    let rejection_threshold = 75;
+
+    let gemini_approved = gemini["verdict"] == "APPROVED" and gemini["confidence"] >= approval_threshold;
+    let claude_approved = claude["verdict"] == "APPROVED" and claude["confidence"] >= approval_threshold;
+    let gemini_rejected = gemini["verdict"] == "REJECTED" and gemini["confidence"] >= rejection_threshold;
+    let claude_rejected = claude["verdict"] == "REJECTED" and claude["confidence"] >= rejection_threshold;
+
+    explain("gemini: " + gemini["verdict"]);
+    explain("claude: " + claude["verdict"]);
+
+    if (gemini_approved and claude_approved) {
+        explain("both approved above threshold");
+        return "RELEASE";
+    }
+    if (gemini_rejected and claude_rejected) {
+        explain("both rejected above threshold");
+        return "REFUND";
+    }
+    explain("divergent or sub-threshold confidence");
+    return "ESCALATE";
+}
+
+let gemini_case1 = {"verdict": "APPROVED", "confidence": 95};
+let claude_case1 = {"verdict": "APPROVED", "confidence": 90};
+print(evaluate_consensus(gemini_case1, claude_case1));
+
+let gemini_case2 = {"verdict": "REJECTED", "confidence": 85};
+let claude_case2 = {"verdict": "REJECTED", "confidence": 80};
+print(evaluate_consensus(gemini_case2, claude_case2));
+
+let gemini_case3 = {"verdict": "APPROVED", "confidence": 95};
+let claude_case3 = {"verdict": "REJECTED", "confidence": 85};
+print(evaluate_consensus(gemini_case3, claude_case3));
+
+let gemini_case4 = {"verdict": "APPROVED", "confidence": 70};
+let claude_case4 = {"verdict": "APPROVED", "confidence": 95};
+print(evaluate_consensus(gemini_case4, claude_case4));

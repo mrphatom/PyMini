@@ -1,0 +1,7 @@
+assert(1 < 2, "unreachable");
+try {
+    assert(1 > 2, "should fail");
+} catch (err) {
+    print("assert-caught");
+}
+log_audit("audit.log", "test entry");

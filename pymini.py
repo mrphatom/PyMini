@@ -765,6 +765,28 @@ class NowFunction(PyMiniCallable):
     def call(self, interpreter, arguments):
         raise Exception("now() is blocked in strict mode.")
 
+class AssertFunction(PyMiniCallable):
+    def arity(self):
+        return 2
+    def call(self, interpreter, arguments):
+        condition = arguments[0]
+        message = arguments[1]
+        if not interpreter.is_truthy(condition):
+            raise Exception(f"Assertion Failed: {message}")
+        return PyMiniNull()
+
+class LogAuditFunction(PyMiniCallable):
+    def arity(self):
+        return 2
+    def call(self, interpreter, arguments):
+        path = arguments[0]
+        message = arguments[1]
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(path, "a") as f:
+            f.write(f"[{timestamp}] {message}\n")
+        return PyMiniNull()
+
 class PyMiniFunction(PyMiniCallable):
     def __init__(self, declaration, closure):
         self.declaration = declaration
@@ -818,11 +840,19 @@ class Interpreter:
         self.globals.define("get_explanations", GetExplanationsFunction())
         self.globals.define("random", RandomFunction())
         self.globals.define("now", NowFunction())
+        self.globals.define("assert", AssertFunction())
+        self.globals.define("log_audit", LogAuditFunction())
         
         if RUST_CORE_AVAILABLE:
             self.globals.define("solana_get_balance", RustFunction(pymini_core.get_balance, 2))
             self.globals.define("solana_get_account_data", RustFunction(pymini_core.get_account_data, 2))
             self.globals.define("solana_deserialize_simple_account", RustFunction(pymini_core.deserialize_simple_account, 1))
+            self.globals.define("solana_deserialize_gig_escrow", RustFunction(pymini_core.solana_deserialize_gig_escrow, 1))
+            self.globals.define("anchor_fetch_account", RustFunction(pymini_core.anchor_fetch_account, 4))
+            self.globals.define("anchor_build_release_ix", RustFunction(pymini_core.anchor_build_release_ix, 3))
+            self.globals.define("anchor_build_cancel_ix", RustFunction(pymini_core.anchor_build_cancel_ix, 3))
+            self.globals.define("anchor_simulate_tx", RustFunction(pymini_core.anchor_simulate_tx, 2))
+            self.globals.define("anchor_send_tx", RustFunction(pymini_core.anchor_send_tx, 3))
             
         self.environment = self.globals
 

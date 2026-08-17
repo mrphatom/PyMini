@@ -6,5 +6,9 @@ venv/
 ENV/
 pymini_core/target/
 *.whl
+audit.log
+*.json.keypair
+*.key
+*.pem
 .rustup/
 .cargo/
