@@ -2,6 +2,7 @@ import sys
 
 import hashlib
 import json
+from pathlib import Path
 
 # --- Token Types ---
 class TokenType:
@@ -767,6 +768,228 @@ def canonical_value(value):
     return json.dumps(_canonical_data(value), ensure_ascii=False, separators=(", ", ": "))
 
 
+ANCHOR_IDL_PATH = Path(__file__).resolve().parent / "idl.json"
+BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def _load_anchor_idl():
+    try:
+        with ANCHOR_IDL_PATH.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise Exception(f"Unable to load Anchor IDL: {error}")
+
+
+def _anchor_program_id():
+    idl = _load_anchor_idl()
+    program_id = idl.get("address") or idl.get("metadata", {}).get("address")
+    if not isinstance(program_id, str):
+        raise Exception("Anchor IDL does not define a program address.")
+    return program_id
+
+
+def _anchor_instruction_schema(name):
+    idl = _load_anchor_idl()
+    for instruction in idl.get("instructions", []):
+        if instruction.get("name") == name:
+            return instruction
+    raise Exception(f"Unknown Anchor instruction '{name}'.")
+
+
+def _base58_is_pubkey(value):
+    if not isinstance(value, str) or not value:
+        return False
+    number = 0
+    for character in value:
+        if character not in BASE58_ALPHABET:
+            return False
+        number = number * 58 + BASE58_ALPHABET.index(character)
+    decoded = b"" if number == 0 else number.to_bytes((number.bit_length() + 7) // 8, "big")
+    decoded = b"\x00" * (len(value) - len(value.lstrip("1"))) + decoded
+    return len(decoded) == 32
+
+
+def _validate_anchor_type(value, type_spec, path):
+    if type_spec == "string":
+        if not isinstance(value, str):
+            raise Exception(f"{path} must be a string.")
+        return
+    if type_spec == "bool":
+        if not isinstance(value, bool):
+            raise Exception(f"{path} must be a boolean.")
+        return
+    if type_spec == "pubkey":
+        if not _base58_is_pubkey(value):
+            raise Exception(f"{path} must be a valid 32-byte base58 public key.")
+        return
+    if type_spec in ("u8", "u16", "u32", "u64", "u128"):
+        limits = {"u8": 2**8 - 1, "u16": 2**16 - 1, "u32": 2**32 - 1, "u64": 2**64 - 1, "u128": 2**128 - 1}
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > limits[type_spec]:
+            raise Exception(f"{path} must be an unsigned {type_spec[1:]}-bit integer.")
+        return
+    if type_spec in ("i8", "i16", "i32", "i64", "i128"):
+        bits = int(type_spec[1:])
+        if isinstance(value, bool) or not isinstance(value, int) or value < -(2 ** (bits - 1)) or value > 2 ** (bits - 1) - 1:
+            raise Exception(f"{path} must be a signed {bits}-bit integer.")
+        return
+    if isinstance(type_spec, dict):
+        if "option" in type_spec:
+            if value is None or isinstance(value, PyMiniNull):
+                return
+            _validate_anchor_type(value, type_spec["option"], path)
+            return
+        if "vec" in type_spec:
+            if not isinstance(value, list):
+                raise Exception(f"{path} must be a list.")
+            for index, item in enumerate(value):
+                _validate_anchor_type(item, type_spec["vec"], f"{path}[{index}]")
+            return
+        if "array" in type_spec:
+            element_type, length = type_spec["array"]
+            if not isinstance(value, list) or len(value) != length:
+                raise Exception(f"{path} must be an array of length {length}.")
+            for index, item in enumerate(value):
+                _validate_anchor_type(item, element_type, f"{path}[{index}]")
+            return
+    raise Exception(f"Unsupported Anchor IDL type at {path}: {type_spec}.")
+
+
+def _anchor_schema_value(instruction):
+    return {
+        "program_id": _anchor_program_id(),
+        "instruction": instruction["name"],
+        "discriminator": list(instruction.get("discriminator", [])),
+        "args": [
+            {"name": argument["name"], "type": argument["type"]}
+            for argument in instruction.get("args", [])
+        ],
+        "accounts": [
+            {
+                "name": account["name"],
+                "signer": bool(account.get("signer", False)),
+                "writable": bool(account.get("writable", False)),
+            }
+            for account in instruction.get("accounts", [])
+        ],
+    }
+
+
+def _validate_anchor_full_action(action):
+    if not isinstance(action, dict):
+        raise Exception("Anchor action must be a dictionary.")
+    instruction_name = action.get("instruction")
+    if not isinstance(instruction_name, str):
+        raise Exception("Anchor action requires a string 'instruction'.")
+    instruction = _anchor_instruction_schema(instruction_name)
+    program_id = action.get("program_id")
+    if not _base58_is_pubkey(program_id):
+        raise Exception("Anchor action 'program_id' must be a valid public key.")
+    if program_id != _anchor_program_id():
+        raise Exception("Anchor action 'program_id' does not match the bundled Anchor IDL.")
+    accounts = action.get("accounts")
+    args = action.get("args")
+    if not isinstance(accounts, dict):
+        raise Exception("Anchor action requires an 'accounts' dictionary.")
+    if not isinstance(args, dict):
+        raise Exception("Anchor action requires an 'args' dictionary.")
+
+    account_specs = instruction.get("accounts", [])
+    expected_accounts = {account["name"] for account in account_specs}
+    actual_accounts = set(accounts)
+    missing = expected_accounts - actual_accounts
+    unexpected = actual_accounts - expected_accounts
+    if missing:
+        raise Exception(f"Anchor action is missing account(s): {', '.join(sorted(missing))}.")
+    if unexpected:
+        raise Exception(f"Anchor action has unexpected account(s): {', '.join(sorted(unexpected))}.")
+    for name, value in accounts.items():
+        if not _base58_is_pubkey(value):
+            raise Exception(f"Anchor account '{name}' must be a valid public key.")
+
+    arg_specs = instruction.get("args", [])
+    expected_args = {argument["name"] for argument in arg_specs}
+    actual_args = set(args)
+    missing = expected_args - actual_args
+    unexpected = actual_args - expected_args
+    if missing:
+        raise Exception(f"Anchor action is missing argument(s): {', '.join(sorted(missing))}.")
+    if unexpected:
+        raise Exception(f"Anchor action has unexpected argument(s): {', '.join(sorted(unexpected))}.")
+    for argument in arg_specs:
+        _validate_anchor_type(args[argument["name"]], argument["type"], f"argument '{argument['name']}'")
+    return True
+
+
+def _validate_anchor_legacy_action(action):
+    if not isinstance(action, dict):
+        raise Exception("Anchor action must be a dictionary.")
+    instruction_name = action.get("type")
+    if not isinstance(instruction_name, str):
+        raise Exception("Legacy Anchor action requires a string 'type'.")
+    instruction = _anchor_instruction_schema(instruction_name)
+    if not _base58_is_pubkey(action.get("program_id")):
+        raise Exception("Anchor action 'program_id' must be a valid public key.")
+    if action.get("program_id") != _anchor_program_id():
+        raise Exception("Anchor action 'program_id' does not match the bundled Anchor IDL.")
+    for field in ("escrow_address", "authority"):
+        if not _base58_is_pubkey(action.get(field)):
+            raise Exception(f"Anchor action '{field}' must be a valid public key.")
+    data = action.get("data")
+    expected = instruction.get("discriminator", [])
+    if data != expected:
+        raise Exception(f"Anchor action discriminator does not match '{instruction_name}'.")
+    if instruction.get("args"):
+        raise Exception(f"Legacy Anchor action cannot represent arguments for '{instruction_name}'.")
+    return True
+
+
+def validate_anchor_action(action):
+    if isinstance(action, dict) and "instruction" in action:
+        return _validate_anchor_full_action(action)
+    return _validate_anchor_legacy_action(action)
+
+
+class AnchorSchemaFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        return _anchor_schema_value(_anchor_instruction_schema(arguments[0]))
+
+
+class AnchorValidateActionFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        validate_anchor_action(arguments[0])
+        return True
+
+
+class AnchorPlanActionFunction(PyMiniCallable):
+    def arity(self):
+        return 4
+
+    def call(self, interpreter, arguments):
+        instruction_name, program_id, accounts, args = arguments
+        action = {
+            "instruction": instruction_name,
+            "program_id": program_id,
+            "accounts": accounts,
+            "args": args,
+        }
+        validate_anchor_action(action)
+        action["schema"] = _anchor_schema_value(_anchor_instruction_schema(instruction_name))
+        identity = {
+            "instruction": instruction_name,
+            "program_id": program_id,
+            "accounts": accounts,
+            "args": args,
+        }
+        action["id"] = hashlib.sha256(canonical_value(identity).encode("utf-8")).hexdigest()
+        return action
+
+
 class DecideFunction(PyMiniCallable):
     def arity(self):
         return 1
@@ -912,6 +1135,24 @@ class RustFunction(PyMiniCallable):
         except Exception as e:
             raise Exception(f"Rust Core Error: {e}")
 
+
+class ValidatedRustFunction(RustFunction):
+    def __init__(self, func, arity_count, action_index):
+        super().__init__(func, arity_count)
+        self.action_index = action_index
+
+    def call(self, interpreter, arguments):
+        validate_anchor_action(arguments[self.action_index])
+        return super().call(interpreter, arguments)
+
+
+class ValidatedBuilderFunction(RustFunction):
+    def call(self, interpreter, arguments):
+        action = super().call(interpreter, arguments)
+        validate_anchor_action(action)
+        return action
+
+
 class Interpreter:
     def __init__(self):
         self.trace = []
@@ -926,6 +1167,9 @@ class Interpreter:
         self.globals.define("canonical", CanonicalFunction())
         self.globals.define("stable_hash", StableHashFunction())
         self.globals.define("plan_action", PlanActionFunction())
+        self.globals.define("anchor_schema", AnchorSchemaFunction())
+        self.globals.define("anchor_validate_action", AnchorValidateActionFunction())
+        self.globals.define("anchor_plan_action", AnchorPlanActionFunction())
         self.globals.define("explain", ExplainFunction())
         self.globals.define("get_explanations", GetExplanationsFunction())
         self.globals.define("random", RandomFunction())
@@ -939,10 +1183,10 @@ class Interpreter:
             self.globals.define("solana_deserialize_simple_account", RustFunction(pymini_core.deserialize_simple_account, 1))
             self.globals.define("solana_deserialize_gig_escrow", RustFunction(pymini_core.solana_deserialize_gig_escrow, 1))
             self.globals.define("anchor_fetch_account", RustFunction(pymini_core.anchor_fetch_account, 4))
-            self.globals.define("anchor_build_release_ix", RustFunction(pymini_core.anchor_build_release_ix, 3))
-            self.globals.define("anchor_build_cancel_ix", RustFunction(pymini_core.anchor_build_cancel_ix, 3))
-            self.globals.define("anchor_simulate_tx", RustFunction(pymini_core.anchor_simulate_tx, 2))
-            self.globals.define("anchor_send_tx", RustFunction(pymini_core.anchor_send_tx, 3))
+            self.globals.define("anchor_build_release_ix", ValidatedBuilderFunction(pymini_core.anchor_build_release_ix, 3))
+            self.globals.define("anchor_build_cancel_ix", ValidatedBuilderFunction(pymini_core.anchor_build_cancel_ix, 3))
+            self.globals.define("anchor_simulate_tx", ValidatedRustFunction(pymini_core.anchor_simulate_tx, 2, 1))
+            self.globals.define("anchor_send_tx", ValidatedRustFunction(pymini_core.anchor_send_tx, 3, 1))
             
         self.environment = self.globals
 

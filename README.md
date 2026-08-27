@@ -225,9 +225,41 @@ let action = plan_action(decision, payload);
 print(action["id"]);
 ```
 
+### Anchor-IDL Action Schemas and Validation
+
+The bundled `idl.json` is now used as the local source of truth for transaction action validation. `anchor_schema(instruction)` exposes the instruction discriminator, argument names and IDL types, account names, signer/writable metadata, and the bundled program ID.
+
+```pymin
+let schema = anchor_schema("initialize_job");
+print(schema["args"][0]["name"]); # job_id
+print(schema["args"][0]["type"]); # string
+```
+
+`anchor_validate_action(action)` validates both the new full action shape and the existing Rust-generated legacy instruction shape. Full actions contain `instruction`, `program_id`, `accounts`, and `args`. Validation rejects unknown instructions, wrong program IDs, missing or unexpected accounts and arguments, malformed public keys, invalid integer ranges, unsupported types, and mismatched instruction discriminators. Errors are catchable with `try`/`catch`.
+
+`anchor_plan_action(instruction, program_id, accounts, args)` validates a full action, embeds its IDL-derived schema, and returns a stable action ID. It is deliberately side-effect-free: it does not access credentials, call RPC, sign, or submit transactions. Existing `anchor_simulate_tx()` and `anchor_send_tx()` calls validate their action dictionaries before crossing into Rust, while Rust's devnet and authorization guard rails remain active.
+
+```pymin
+let action = anchor_plan_action(
+    "initialize_job",
+    "52yt1gCbPeiKP4JYjUVKmMJSgBMMcUx8xRGqozMKX2Mu",
+    {
+        "client": "11111111111111111111111111111111",
+        "freelancer": "11111111111111111111111111111111",
+        "oracle": "11111111111111111111111111111111",
+        "escrow_account": "11111111111111111111111111111111",
+        "vault_account": "11111111111111111111111111111111",
+        "system_program": "11111111111111111111111111111111"
+    },
+    {"job_id": "job-1", "amount": 100, "duration_seconds": 3600}
+);
+print(action["id"]);
+```
+
 The focused and full regression suites are available under `tests/`:
 
 ```bash
+python3 tests/test_anchor_validation.py
 python3 tests/test_batch6.py
 python3 tests/test_all_batches.py
 ```
