@@ -1,5 +1,8 @@
 import sys
 
+import hashlib
+import json
+
 # --- Token Types ---
 class TokenType:
     # Keywords
@@ -738,6 +741,81 @@ class DictSizeFunction(PyMiniCallable):
             raise Exception("dict_size() expects a dictionary argument.")
         return len(arguments[0])
 
+
+def _canonical_data(value):
+    if isinstance(value, PyMiniNull) or value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return [_canonical_data(item) for item in value]
+    if isinstance(value, dict):
+        result = {}
+        for key in sorted(value):
+            if not isinstance(key, str):
+                raise Exception("canonical() only supports string dictionary keys.")
+            result[key] = _canonical_data(value[key])
+        return result
+    raise Exception("canonical() does not support this value type.")
+
+
+def canonical_value(value):
+    return json.dumps(_canonical_data(value), ensure_ascii=False, separators=(", ", ": "))
+
+
+class DecideFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        rules = arguments[0]
+        if not isinstance(rules, list):
+            raise Exception("decide() expects a list of rule dictionaries.")
+        for index, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                raise Exception(f"decide() rule {index} must be a dictionary.")
+            if "when" not in rule or "result" not in rule:
+                raise Exception(f"decide() rule {index} requires 'when' and 'result'.")
+            if interpreter.is_truthy(rule["when"]):
+                return rule["result"]
+        return PyMiniNull()
+
+
+class CanonicalFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        return canonical_value(arguments[0])
+
+
+class StableHashFunction(PyMiniCallable):
+    def arity(self):
+        return 1
+
+    def call(self, interpreter, arguments):
+        canonical = canonical_value(arguments[0])
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class PlanActionFunction(PyMiniCallable):
+    def arity(self):
+        return 2
+
+    def call(self, interpreter, arguments):
+        kind, payload = arguments
+        action_data = {"kind": kind, "payload": payload}
+        return {
+            "kind": kind,
+            "payload": payload,
+            "id": hashlib.sha256(canonical_value(action_data).encode("utf-8")).hexdigest(),
+        }
+
+
 class ExplainFunction(PyMiniCallable):
     def arity(self):
         return 1
@@ -808,8 +886,16 @@ class PyMiniFunction(PyMiniCallable):
 # --- Rust Core Integration ---
 try:
     import pymini_core
-    RUST_CORE_AVAILABLE = True
+    RUST_CORE_AVAILABLE = all(
+        hasattr(pymini_core, name)
+        for name in (
+            "get_balance",
+            "get_account_data",
+            "deserialize_simple_account",
+        )
+    )
 except ImportError:
+    pymini_core = None
     RUST_CORE_AVAILABLE = False
 
 class RustFunction(PyMiniCallable):
@@ -836,6 +922,10 @@ class Interpreter:
         self.globals.define("get_dict_value", GetDictValueFunction())
         self.globals.define("is_null", IsNullFunction())
         self.globals.define("dict_size", DictSizeFunction())
+        self.globals.define("decide", DecideFunction())
+        self.globals.define("canonical", CanonicalFunction())
+        self.globals.define("stable_hash", StableHashFunction())
+        self.globals.define("plan_action", PlanActionFunction())
         self.globals.define("explain", ExplainFunction())
         self.globals.define("get_explanations", GetExplanationsFunction())
         self.globals.define("random", RandomFunction())

@@ -22,6 +22,8 @@ PyMini is a lightweight, interpreted programming language implemented in Python.
 - **Dictionaries:** Native dict literals `{"key": value}` with indexing and assignment.
 - **Traceability:** `explain()` and `get_explanations()` for rule execution transparency.
 - **Determinism:** Strict-mode guardrails blocking `random()` and `now()`.
+- **Decision Tables:** Ordered `decide()` rules for explicit first-match oracle logic.
+- **Reproducible Plans:** `canonical()`, `stable_hash()`, and `plan_action()` for stable, side-effect-free action identities.
 
 ## Installation
 
@@ -203,13 +205,41 @@ while (i < 3) {
 }
 ```
 
+### Batch 6 Extensions
+
+Batch 6 adds a deterministic rule layer for Web3 decisions. `decide(rules)` evaluates a list of dictionaries in order and returns the first matching rule's `result`; when no rule matches, it returns PyMini `null`. Each rule must contain `when` and `result`, so malformed decision tables fail loudly and remain catchable through `try`/`catch`.
+
+```pymin
+let decision = decide([
+    {"when": gemini_approved, "result": "RELEASE"},
+    {"when": both_rejected, "result": "REFUND"},
+    {"when": true, "result": "ESCALATE"}
+]);
+```
+
+`canonical(value)` returns a stable representation of supported primitive, list, dictionary, and null values. Dictionary keys are sorted while list order is preserved. `stable_hash(value)` returns a SHA-256 identifier of that canonical representation. `plan_action(kind, payload)` creates a plain action dictionary with `kind`, `payload`, and a reproducible `id`; it performs no network calls, signing, credential access, or transaction submission.
+
+```pymin
+let payload = {"escrow": "escrow_1", "decision": decision};
+let action = plan_action(decision, payload);
+print(action["id"]);
+```
+
+The focused and full regression suites are available under `tests/`:
+
+```bash
+python3 tests/test_batch6.py
+python3 tests/test_all_batches.py
+```
+
 ## Project Structure
 
-- `pymini.py`: The core interpreter containing the lexer, parser, and tree-walk evaluator.
+- `pymini.py`: The core interpreter containing the lexer, parser, tree-walk evaluator, and built-ins.
 - `pymini_core/`: The PyO3 Rust extension containing Solana RPC, Anchor-client, Borsh decoding, simulation, and guarded sending.
 - `idl.json`: The bundled Mappers Anchor IDL used by the Rust extension.
-- `examples/`: Sample PyMini programs, including `escrow_status.pymin`, `oracle_decision.pymin`, and `assert_audit.pymin`.
-- `docs/`: Detailed documentation on language design and usage.
+- `examples/`: Sample PyMini programs, including `batch6_decisions.pymin`, `escrow_status.pymin`, `oracle_decision.pymin`, and `assert_audit.pymin`.
+- `tests/`: Focused and full deterministic regression tests.
+- `docs/`: Detailed language design and Batch 6 specification.
 
 ## References
 

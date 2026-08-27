@@ -1,0 +1,17 @@
+let rules = [
+    {"when": true, "result": "RELEASE"},
+    {"when": true, "result": "ESCALATE"}
+];
+
+let decision = decide(rules);
+let payload = {
+    "escrow": "escrow_1",
+    "decision": decision,
+    "amount": 100
+};
+let action = plan_action(decision, payload);
+
+explain("decision: " + decision);
+explain("action id: " + action["id"]);
+print(canonical(payload));
+print(action["id"]);
